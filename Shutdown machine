@@ -1,0 +1,30 @@
+from tkinter import *
+import os
+def restart():
+    os.system("shutdown /r /t 10")
+def restart():
+    os.system("shutdown /r /t 2")
+def restart_time():
+    os.system("shutdown /r /t 10")
+def logout():
+    os.system("shutdown -l")
+def shutdown():
+    os.system("shutdown /s /t 2")
+
+st = Tk()
+st.title("ShutDown Application")
+st.wm_geometry("500x500")
+st.config(bg="pink")
+r_button=Button(st,text="Restart",font=("Time New Roman",25,"bold"),relief=RAISED,cursor="plus",command=restart)
+r_button.config(bg="grey")
+r_button.place(x=650,y=225,height=50,width=220)
+rt_button=Button(st,text="Restart Time",font=("Time New Roman",25,"bold"),relief=RAISED,cursor="plus",command=restart_time)
+rt_button.config(bg="grey")
+rt_button.place(x=650,y=325,height=50,width=220)
+log_button=Button(st,text="Log Out",font=("Time New Roman",25,"bold"),relief=RAISED,cursor="plus",command=logout)
+log_button.config(bg="grey")
+log_button.place(x=650,y=425,height=50,width=220)
+shut_button=Button(st,text="Shut Down",font=("Time New Roman",25,"bold"),relief=RAISED,cursor="plus",command=shutdown)
+shut_button.config(bg="grey")
+shut_button.place(x=650,y=525,height=50,width=220)
+st.mainloop()
