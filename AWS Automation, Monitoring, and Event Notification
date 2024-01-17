@@ -1,0 +1,212 @@
+pipeline{
+    agent any
+    parameters {
+        choice(
+            name: 'Action',
+            choices: ['Create', 'Destroy'],
+            description: 'Choose an option'
+        )
+        string(
+            name: 'Num_Instances',
+            defaultValue: '',
+            description: 'Enter The Number Of Machines'
+        )
+        string(
+            name: 'Name_Instances',
+            defaultValue: '',
+            description: 'Enter The Name Of Machines seprated by comma (without space)'
+        )
+        // "machine1,machine2,machine3"(without space)
+        choice(
+            name: 'Environment',
+            choices: ['dev', 'sit', 'uat', 'prod'],
+            description: 'Choose an Environment'
+        )
+        choice(
+            name: 'Region',
+            choices: ['ap-south-1', 'us-east-1', 'eu-west-1'],
+            description: 'Choose Region'
+        )
+        choice(
+            name: 'Product',
+            choices: ['Product1', 'Product2', 'Product3'],
+            description: 'Choose Product'
+        )
+    }
+    stages{
+        stage("Git Checkout") {
+            steps{
+                script {
+                    // Use the checkout step to clone the GitHub repository
+                    def gitRepoUrl = 'https://github.com/viren051205/jenkinsdemo.git'
+                    // Clone the repository into the Jenkins workspace using Git command
+                    sh "git clone $gitRepoUrl"
+                    sh """
+                        ls -al
+                        aws --version
+                    """
+                }
+            }
+        }
+        stage('User Input') {
+            steps {
+                script {
+                    // Access parameters as environment variables
+                    action = params.Action
+                    numInstances = params.Num_Instances.toInteger()
+                }
+            }
+        }
+        stage("Resource ACTION") {
+            steps{
+                script {
+                    response = params.Action
+                    key = params.Environment
+                    withCredentials([[
+                    $class: 'AmazonWebServicesCredentialsBinding', credentialsId: key, accessKeyVariable: 'AWS_ACCESS_KEY_ID', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]){
+                    // Checking condition based on user inputs    
+                    if (response == 'Create') {
+                        echo "Creating ${numInstances} instance(s)..."
+
+                        def Machinestring = "${params.Name_Instances}"
+                        def issepratedbycomma = Machinestring.contains(',') //true otherwise false
+                        def MachineNames = Machinestring.split(',') //[m1 m2 m3]
+                        def ami
+                        def region = params.Region
+
+                        // Selecting AMI based on Region selected
+                        // NOTE:'Please add AMI,Subnet Id,Security group and key pair based on your account'
+                        if (region == 'us-east-1') {
+                            ami = 'ami-0df435f331839b2d6'
+                            security_group = 'sg-08330aa458d97307e'
+                            subnet_id = 'subnet-015b0f80a1f8603b1'
+                            key_pair = 'linux1' 
+                        } else if (region == 'ap-south-1') {
+                            ami = 'ami-099b3d23e336c2e83'
+                            security_group = 'sg-0574087f0d7fa6831'
+                            subnet_id = 'subnet-0a84b8cd677196295'
+                            key_pair = 'linuxviren'
+                        } else if (region == 'eu-west-1') {
+                            ami = 'ami-0dab0800aa38826f2'
+                            security_group = 'sg-08789e0f3c4a6bb42'
+                            subnet_id = 'subnet-03d31e33add387484'
+                            key_pair = 'linux2'
+                        }
+                         
+                        if (issepratedbycomma) { // Multiple instance name provided [m1 m2 m3]
+                            // if block for multiple instance creation
+                            echo "I am inside Create issepratedcomma if-block"
+                            for (machine in MachineNames) {
+                                multiple_Instance_Name= "wato-${params.Product}-${params.Environment}-$machine"
+                                sh """
+                                    echo "Creating  Machine : wato-${params.Product}-${params.Environment}-$machine"
+                                    aws ec2 run-instances --image-id $ami --instance-type t2.micro --key-name $key_pair --security-group-ids $security_group --subnet-id $subnet_id --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=$multiple_Instance_Name}]' --region ${params.Region}                     
+                                """
+                            }
+                        } else {
+                            // else block for single instance creation
+                            Single_Instance_Name= "wato-${params.Product}-${params.Environment}-${params.Name_Instances}"
+                            sh """
+                                echo $Single_Instance_Name
+                                aws ec2 run-instances --image-id $ami --instance-type t2.micro --key-name $key_pair --security-group-ids $security_group --subnet-id $subnet_id --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=$Single_Instance_Name}]' --region ${params.Region}
+
+                            """
+                        }                    
+                        
+                    } else if (response == 'Destroy') {
+                            
+                        echo "Terminating ${numInstances} instance(s)..."
+                        def destroy_machine_string = "${params.Name_Instances}"
+                        def issepratedbycommas = destroy_machine_string.contains(',') // true otherwise false
+                        def destroyMachineNames = destroy_machine_string.split(',')
+
+
+                        if (issepratedbycommas) {
+                            // if block for multiple instance destroy
+                            echo "I am inside Destroy issepratedcomma if-block"
+                            for (machine in destroyMachineNames) {
+                                Instance_Name= "wato-${params.Product}-${params.Environment}-$machine"
+                                def INSTANCE_ID = sh(script: "aws ec2 describe-instances --filters \"Name=tag:Name,Values=$Instance_Name\" --query 'Reservations[].Instances[].InstanceId' --output text --region ${params.Region}", returnStdout:true).trim() 
+                                sh """ 
+                                    echo "Terminating Instance: ${INSTANCE_ID}"
+                                    aws ec2 terminate-instances --instance-ids ${INSTANCE_ID} --region ${params.Region}
+                                """
+                            }
+
+                        } else {
+                            // else block for single instance destroy
+                            echo "I am inside Destroy else-block"
+                            destroy_machine_name= "wato-${params.Product}-${params.Environment}-${params.Name_Instances}"
+                            def INSTANCE_ID = sh(script: "aws ec2 describe-instances --filters \"Name=tag:Name,Values=$destroy_machine_name\" --query 'Reservations[].Instances[].InstanceId' --output text --region ${params.Region}", returnStdout:true).trim() 
+                            sh """
+                                echo "Terminating Instance: ${INSTANCE_ID}"
+                                aws ec2 terminate-instances --instance-ids ${INSTANCE_ID} --region ${params.Region}
+
+                            """
+                            }
+                        }
+                    }
+                   
+                }
+               
+            }
+        }
+        stage("Updating Files on S3"){
+            steps{
+                echo "====++++executing Updating Files on S3++++===="
+
+                script {
+                    def timestamp = new Date().format('dd-MM-YYYY-hh:mm:ss-a',TimeZone.getTimeZone('IST'))
+                    def file = "${params.Action}-${timestamp}.txt"
+                    aws_credentials = "${params.Environment}"
+                    withCredentials([[
+                    $class: 'AmazonWebServicesCredentialsBinding', credentialsId: aws_credentials, accessKeyVariable: 'AWS_ACCESS_KEY_ID', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]){
+                    machine_name= "wato-${params.Product}-${params.Environment}-${params.Name_Instances}"
+                    def instance_id = sh(script: "aws ec2 describe-instances --filters \"Name=tag:Name,Values=$machine_name\" --query 'Reservations[].Instances[].InstanceId' --output text --region ${params.Region}", returnStdout:true).trim()
+                    def public_ip = sh(script: "aws ec2 describe-instances --filters \"Name=tag:Name,Values=$machine_name\" --query 'Reservations[].Instances[].PublicIpAddress' --output text --region ${params.Region}", returnStdout:true).trim()
+                    def private_ip = sh(script: "aws ec2 describe-instances --filters \"Name=tag:Name,Values=$machine_name\" --query 'Reservations[].Instances[].PrivateIpAddress' --output text --region ${params.Region}", returnStdout:true).trim()
+                    sh """
+                    mkdir wato_parameter
+                    ls -al
+                    cd wato_parameter
+                    touch ${file}
+                    echo 'Action      = "${params.Action}"' >> ${file}
+                    echo 'Environment = "${params.Environment}"' >> ${file}
+                    echo 'Region      = "${params.Region}"' >> ${file}
+                    echo 'Product     = "${params.Product}"' >> ${file}
+                    echo 'Instance ID =  ${instance_id}' >> ${file}
+                    echo 'Public IP   =  ${public_ip}' >> ${file}
+                    echo 'Private IP  =  ${private_ip}' >> ${file}
+                    cat ${file}
+
+                    """
+                    echo "${file} Created on linux Machine Workspace"
+                    
+                    sh """
+                        echo 'Uploading Log File on S3 bucket : wato-logs-bucket-bucket'
+                        aws s3 cp $WORKSPACE/wato_parameter/${file} s3://wato-logs-bucket-bucket/${params.Action}/
+                        echo 'List-out logs Present in S3'
+                        aws s3 ls s3://wato-logs-bucket-bucket/${params.Action}/ --recursive --human-readable
+                    """    
+                    }          
+                }
+            }
+            
+        }
+    
+    }
+    post{
+        always{
+            echo "========always========"
+        }
+        cleanup{
+            deleteDir()
+        }
+        success{
+            echo "========pipeline executed successfully ========"
+        }
+        failure{
+            echo "========pipeline execution failed========"
+        }
+    }
+}
