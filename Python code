@@ -1,0 +1,13 @@
+from selenium import webdriver
+driver = webdriver.Chrome()
+# Open the website
+driver.get("https://www.atg.world/")
+
+# Check if the website title have expected text
+if "ATG - Access To Goodness" in driver.title:
+    print("Website loaded successfully")
+else:
+    print("Website failed to load properly")
+
+# Close the browser
+driver.quit()
